@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Светофор Слов - Соотнесение Предложения и Картинки</title>
+    
+    <!-- Подключение Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключение Confetti (Салют) для победы -->
+    <script src="https://cdn.jsdelivr.net/npm/js-confetti@latest/dist/js-confetti.min.js"></script>
+    <style>
+        /* Увеличенный и детский шрифт (Inter подходит, увеличим размеры) */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+        /* Стиль для кнопок-картинок */
+        .image-button {
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 10px -1px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.08);
+            padding: 0; 
+            border: 6px solid transparent; /* Увеличенная рамка */
+            background-color: #fff;
+            overflow: hidden;
+            cursor: pointer;
+            min-height: 150px; /* Увеличение минимального размера */
+            aspect-ratio: 1 / 1; /* Сохранение пропорций */
+            display: flex; /* Добавляем flexbox, чтобы центрировать изображение */
+            align-items: center;
+            justify-content: center;
+        }
+        .image-button:hover:not(:disabled) {
+            transform: scale(1.03);
+            box-shadow: 0 12px 20px -3px rgba(0, 0, 0, 0.3);
+            border-color: #6366f1; /* Индиго при наведении */
+        }
+        .image-button img {
+            width: 95%; /* Небольшой отступ от края кнопки */
+            height: 95%;
+            object-fit: contain; 
+        }
+        /* Стиль для правильного выбора (после клика) */
+        .image-button.correct-clicked {
+            border-color: #10B981 !important; /* Зеленый */
+            box-shadow: 0 0 0 6px #A7F3D0, 0 12px 20px -3px rgba(0, 0, 0, 0.3);
+            transform: scale(1.03);
+        }
+
+        /* Стиль для неправильного выбора */
+        .image-button.incorrect-clicked {
+            border-color: #EF4444 !important; /* Красный */
+            box-shadow: 0 0 0 6px #FECACA, 0 12px 20px -3px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Адаптация сетки для мобильных устройств */
+        #image-buttons-grid {
+             grid-template-columns: repeat(2, 1fr); /* 2 колонки на мобильных */
+             gap: 1rem; /* Увеличенный отступ */
+        }
+        @media (min-width: 768px) {
+            #image-buttons-grid {
+                grid-template-columns: repeat(4, 1fr); /* 4 колонки на десктопе */
+                gap: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- Контейнер для Confetti (Салют) -->
+    <canvas id="confetti-canvas" class="fixed top-0 left-0 w-full h-full pointer-events-none z-50"></canvas>
+
+    <div id="game-container" class="w-full max-w-5xl bg-white rounded-2xl shadow-xl p-6 md:p-10">
+        
+        <h1 class="text-3xl md:text-4xl font-extrabold text-center text-gray-800 mb-4">
+            ✨ Соотнеси Предложение и Картинку
+        </h1>
+
+        <!-- Блок счета и цели -->
+        <div class="flex justify-between items-center mb-6 p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-xl font-bold">
+            <span class="text-gray-700">Цель: <span id="goal-display" class="text-green-600">70</span></span>
+            <span class="text-gray-700">Счет: <span id="score-display" class="text-indigo-600">0</span></span>
+        </div>
+        
+        <!-- Центральный блок: Слово и Кнопка Аудио -->
+        <div class="flex flex-col items-center mb-8">
+            <button id="audio-button" 
+                    class="p-4 bg-indigo-500 text-white rounded-full shadow-lg hover:bg-indigo-700 transition duration-300 transform hover:scale-105 disabled:opacity-50"
+                    title="Повторить предложение"
+                    disabled>
+                <!-- Иконка динамика (Lucide: Volume 2) -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2V15H6L11 19V5Z"/><path d="M15.54 8.46A5 5 0 0 1 17 12"/></svg>
+            </button>
+            
+            <!-- МЕСТО ДЛЯ ОТОБРАЖЕНИЯ ПРЕДЛОЖЕНИЯ (КРУПНЫЙ ШРИФТ) -->
+            <div id="current-word-display" 
+                 class="mt-4 text-5xl md:text-6xl font-black text-gray-900 tracking-wider hidden p-3 px-6 bg-yellow-100 rounded-lg border-4 border-yellow-500 shadow-lg select-none text-center">
+            </div>
+        </div>
+
+
+        <!-- Сетка для кнопок-КАРТИНОК (варианты ответа) -->
+        <div id="image-buttons-grid" class="grid gap-4">
+            <!-- Кнопки с изображениями будут здесь -->
+        </div>
+
+        <!-- Кнопка начала/следующего слова -->
+        <div class="flex justify-center mt-8">
+            <button id="start-next-button" 
+                    class="px-8 py-3 bg-green-500 text-white text-xl rounded-xl hover:bg-green-600 transition duration-300 transform hover:scale-105">
+                Начать Игру
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // Глобальные переменные для элементов UI
+        const audioButton = document.getElementById('audio-button');
+        const buttonsGrid = document.getElementById('image-buttons-grid');
+        const startNextButton = document.getElementById('start-next-button');
+        const currentWordDisplay = document.getElementById('current-word-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const goalDisplay = document.getElementById('goal-display');
+        
+        let jsConfettiInstance = null; // Переменная для хранения экземпляра Confetti
+
+        // ==== КОНФИГУРАЦИЯ ИГРЫ И СЧЕТА ====
+        let score = 0;
+        const GOAL_SCORE = 70;
+        const POINTS_CORRECT = 5;
+        const POINTS_INCORRECT = -3;
+        const AUTOPLAY_DELAY_MS = 2000; // Задержка для автоматического перехода
+
+        // ==== БАЗОВАЯ КОНФИГУРАЦИЯ СЛОВАРЯ ====
+        const baseGameRounds = [
+            { sentence: "He is a toy mouse.", audioPath: "./audio/Heistoymouse.wav", targetImages: ["Monty.png"] },
+            { sentence: "He is Mr Star.", audioPath: "./audio/HeisMrstar.wav", targetImages: ["Father.png"] },
+            { sentence: "She is a mother.", audioPath: "./audio/Sheisamother.wav", targetImages: ["Mother.png"] },
+            
+            // Раунды с множественным выбором (И)
+            { sentence: "They are women.", audioPath: "./audio/Theyarewomen.wav", targetImages: ["Mother.png", "Grandma.png"] },
+            { sentence: "They are men.", audioPath: "./audio/Theyaremen.wav", targetImages: ["Father.png", "Grandpa.png"] },
+            { sentence: "They are sisters.", audioPath: "./audio/Theyaresisters.wav", targetImages: ["Suzy.png", "Stella.png"] },
+            { sentence: "They are girls.", audioPath: "./audio/Theyaregirls.wav", targetImages: ["Suzy.png", "Stella.png"] },
+
+            // Раунды с единственным выбором (ИЛИ - требуют обработки)
+            // ЭТО ТРИ КЕЙСА, которые будут СПЛИТОВАНЫ:
+            { sentence: "He is a man.", audioPath: "./audio/Heisaman.wav", targetImages: ["Father.png", "Grandpa.png"], splitTargets: true },
+            { sentence: "She is a woman.", audioPath: "./audio/Sheisawoman.wav", targetImages: ["Mother.png", "Grandma.png"], splitTargets: true },
+            { sentence: "She is a girl.", audioPath: "./audio/Sheisagirl.wav", targetImages: ["Suzy.png", "Stella.png"], splitTargets: true },
+            
+            // Раунды с единственным выбором (без ИЛИ)
+            { sentence: "He is a father.", audioPath: "./audio/Heisafather.wav", targetImages: ["Father.png"] },
+            { sentence: "He is a boy.", audioPath: "./audio/Heisaboy.wav", targetImages: ["Simon.png"] },
+            { sentence: "He is a brother.", audioPath: "./audio/Heisabrother.wav", targetImages: ["Simon.png"] },
+            { sentence: "He is Simon.", audioPath: "./audio/HeisSimon.wav", targetImages: ["Simon.png"] },
+            { sentence: "He is Grandpa Star.", audioPath: "./audio/Heisgrandpastar.wav", targetImages: ["Grandpa.png"] },
+            { sentence: "She is Mrs Star.", audioPath: "./audio/Sheismrsstar.wav", targetImages: ["Mother.png"] },
+            { sentence: "She is a grandmother.", audioPath: "./audio/Sheisagrandmother.wav", targetImages: ["Grandma.png"] },
+            { sentence: "She is Grandma Star.", audioPath: "./audio/Sheisgrandmastar.wav", targetImages: ["Grandma.png"] },
+            { sentence: "She is Stella.", audioPath: "./audio/Sheisstella.wav", targetImages: ["Stella.png"] },
+            { sentence: "She is Suzy.", audioPath: "./audio/Sheissuzy.wav", targetImages: ["Suzy.png"] },
+            { sentence: "She is a doll.", audioPath: "./audio/Sheisadoll.wav", targetImages: ["Marie.png"] },
+            { sentence: "He is a superhero.", audioPath: "./audio/Heisasuperhero.wav", targetImages: ["Maskman.png"] },
+        ];
+        
+        const allImageFilenames = [
+            "Father.png", "Mother.png", "Grandma.png", "Grandpa.png", "Simon.png", 
+            "Stella.png", "Suzy.png", "Marie.png", "Maskman.png", "Monty.png"
+        ];
+
+        let gameRoundsProcessed = []; // Список раундов, готовых к игре
+        let availableRounds = []; 
+        let currentRound = null;
+        let selectedCorrectImages = []; // Хранит выбранные пользователем правильные имена файлов
+        let isProcessing = false;
+        let hasMadeError = false; 
+
+        // Инициализация аудио-плеера (для переиспользования)
+        const audioPlayer = new Audio();
+
+        /**
+         * Предварительная обработка раундов для разделения "ИЛИ" условий.
+         * Раунд с 'splitTargets: true' и [A, B] будет преобразован в два раунда:
+         * 1. Цель [A]
+         * 2. Цель [B]
+         */
+        const preprocessRounds = (rounds) => {
+            const processed = [];
+            rounds.forEach(round => {
+                if (round.splitTargets && round.targetImages.length > 1) {
+                    round.targetImages.forEach(target => {
+                        // Создаем новый раунд с одним уникальным целевым изображением
+                        processed.push({
+                            sentence: round.sentence,
+                            audioPath: round.audioPath,
+                            targetImages: [target] // Цель теперь только одна
+                        });
+                    });
+                } else {
+                    processed.push(round);
+                }
+            });
+            return processed;
+        };
+
+
+        // Функция для перемешивания массива (алгоритм Фишера-Йейтса)
+        const shuffleArray = (array) => {
+            const newArray = array.slice(); 
+            for (let i = newArray.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const temp = newArray[i];
+                newArray[i] = newArray[j];
+                newArray[j] = temp;
+            }
+            return newArray;
+        };
+
+        // Обновление счета
+        const updateScore = (points) => {
+            score = Math.max(0, score + points); // Счет не может быть отрицательным
+            scoreDisplay.textContent = score;
+
+            if (score >= GOAL_SCORE) {
+                checkWinCondition();
+            }
+        };
+
+        // Проверка условия победы
+        const checkWinCondition = () => {
+            if (score >= GOAL_SCORE) {
+                isProcessing = true;
+                startNextButton.textContent = "Начать заново";
+                startNextButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+                startNextButton.classList.add('bg-pink-500', 'hover:bg-pink-600');
+                startNextButton.disabled = false; // Активируем кнопку для перезапуска
+
+                // Показываем салют
+                if (jsConfettiInstance) {
+                    jsConfettiInstance.addConfetti({
+                        confettiColors: ['#ff0a54', '#ff477e', '#ff7096', '#ff85a1', '#fbb1bd', '#f9bec7'],
+                        confettiRadius: 5,
+                        confettiNumber: 500,
+                    });
+                }
+
+                // Блокируем аудио кнопку и очищаем поле
+                audioButton.disabled = true;
+                updateWordDisplay('', false);
+                buttonsGrid.innerHTML = '';
+            }
+        };
+
+        // Помощник для воспроизведения аудио с обработкой ошибок
+        const playAudio = async (path) => {
+            audioPlayer.src = path;
+            try {
+                // Пытаемся воспроизвести аудио
+                await audioPlayer.load();
+                await audioPlayer.play();
+                isProcessing = false; // Снимаем блокировку, если аудио успешно загрузилось
+                audioButton.disabled = false;
+            } catch (error) {
+                console.error("Ошибка при попытке воспроизвести аудио. Проверьте путь: " + path, error);
+                startNextButton.disabled = false;
+                audioButton.disabled = true;
+                isProcessing = false;
+            }
+        };
+
+        // Обработчик для повторного воспроизведения аудио
+        audioButton.addEventListener('click', () => {
+            if (currentRound && !isProcessing) {
+                playAudio(currentRound.audioPath);
+            }
+        });
+        
+        // Функция для обновления центрального блока слова
+        const updateWordDisplay = (sentence, isVisible) => {
+            currentWordDisplay.textContent = sentence;
+            if (isVisible) {
+                currentWordDisplay.classList.remove('hidden');
+            } else {
+                currentWordDisplay.classList.add('hidden');
+            }
+        };
+
+        // Обработчик нажатия на кнопку "Начать/Следующее слово"
+        startNextButton.addEventListener('click', () => {
+            if (score >= GOAL_SCORE) {
+                // Если игра выиграна, сбросить счет и начать заново
+                score = 0;
+                updateScore(0);
+                availableRounds = shuffleArray(gameRoundsProcessed.slice()); // Загружаем все раунды заново
+                startNextButton.classList.remove('bg-pink-500', 'hover:bg-pink-600');
+                startNextButton.classList.add('bg-green-500', 'hover:bg-green-600');
+                if (jsConfettiInstance) {
+                    jsConfettiInstance.clearCanvas(); // Очистить салют
+                }
+                loadNextRound();
+            } else if (!isProcessing) {
+                loadNextRound();
+            }
+        });
+
+        // Главная функция для загрузки нового раунда
+        const loadNextRound = () => {
+            if (score >= GOAL_SCORE) {
+                checkWinCondition();
+                return;
+            }
+
+            if (availableRounds.length === 0) {
+                availableRounds = shuffleArray(gameRoundsProcessed.slice()); 
+            }
+            
+            // 1. Блокируем обработку
+            startNextButton.textContent = "Загрузка..."; 
+            isProcessing = true;
+            audioButton.disabled = true;
+            startNextButton.disabled = true; 
+            
+            // Сброс состояния раунда
+            updateWordDisplay('', false);
+            selectedCorrectImages = []; 
+            hasMadeError = false; 
+
+            // 2. Выбираем новый раунд
+            currentRound = availableRounds.pop();
+            const requiredTargets = currentRound.targetImages; // Цели
+
+            // 3. Формируем список вариантов (всегда 4 кнопки)
+            let choicesFilenames = requiredTargets.slice(); // Начинаем со всех необходимых целей
+
+            // Добавляем случайные нерелевантные дистракторы
+            // Исключаем все требуемые цели и любые другие цели из базового словаря, которые могут совпадать с текущей целью (для ИЛИ-раундов)
+            const allForbiddenImages = [
+                ...requiredTargets,
+                ...baseGameRounds
+                    .filter(r => r.sentence === currentRound.sentence && r.audioPath === currentRound.audioPath)
+                    .flatMap(r => r.targetImages)
+            ];
+
+            let nonRelevantDistractors = allImageFilenames.filter(name => !allForbiddenImages.includes(name));
+            nonRelevantDistractors = shuffleArray(nonRelevantDistractors);
+
+            // Сколько еще дистракторов нужно (4 - сколько уже добавлено)
+            const neededDistractors = 4 - choicesFilenames.length; 
+
+            for (let i = 0; i < neededDistractors && i < nonRelevantDistractors.length; i++) {
+                choicesFilenames.push(nonRelevantDistractors[i]);
+            }
+
+            // Перемешиваем итоговый список
+            choicesFilenames = shuffleArray(choicesFilenames);
+
+
+            // 4. Очищаем и создаем КНОПКИ-КАРТИНКИ
+            buttonsGrid.innerHTML = '';
+            choicesFilenames.forEach(filename => {
+                const button = document.createElement('button');
+                const img = document.createElement('img');
+                
+                button.dataset.filename = filename; 
+                button.className = 'image-button rounded-xl transition duration-300 aspect-square';
+
+                img.src = `./img/${filename}`;
+                img.alt = filename.replace('.png', '');
+                img.onerror = function() {
+                    this.onerror=null;
+                    this.src=`https://placehold.co/200x200/B91C1C/FFFFFF?text=MISSING%20${filename.replace('.png', '').toUpperCase()}`;
+                    this.style.objectFit = 'contain';
+                    console.error(`Изображение .${filename} не найдено.`);
+                };
+
+                button.appendChild(img);
+                button.addEventListener('click', checkAnswer);
+                buttonsGrid.appendChild(button);
+            });
+
+            // 5. Воспроизводим аудио, показываем предложение и обновляем UI
+            setTimeout(() => {
+                updateWordDisplay(currentRound.sentence, true);
+                playAudio(currentRound.audioPath);
+                startNextButton.textContent = "Следующее задание";
+            }, 500);
+        };
+
+        // Завершение раунда (автоматический переход)
+        const finishRound = () => {
+            isProcessing = true;
+            audioButton.disabled = true;
+            
+            // Блокируем все кнопки картинок
+            buttonsGrid.querySelectorAll('.image-button').forEach(btn => btn.disabled = true);
+            
+            // Автоматический переход к следующему раунду через AUTOPLAY_DELAY_MS
+            setTimeout(() => {
+                if (score < GOAL_SCORE) {
+                    loadNextRound();
+                } else {
+                    checkWinCondition();
+                }
+            }, AUTOPLAY_DELAY_MS);
+        }
+
+        // Функция для проверки ответа
+        const checkAnswer = (event) => {
+            if (isProcessing || hasMadeError || score >= GOAL_SCORE) return; 
+
+            const clickedButton = event.target.closest('.image-button');
+            if (!clickedButton || clickedButton.classList.contains('correct-clicked')) {
+                return; // Игнорируем повторное нажатие на уже правильный ответ
+            }
+            
+            const clickedFilename = clickedButton.dataset.filename;
+            const requiredTargets = currentRound.targetImages;
+            const isTarget = requiredTargets.includes(clickedFilename);
+            
+            if (isTarget) {
+                // --- Правильный выбор (часть множественного или единственного) ---
+                
+                // 1. Визуальное подтверждение
+                clickedButton.classList.add('correct-clicked');
+                clickedButton.disabled = true; 
+                
+                // 2. Добавляем в выбранные
+                if (!selectedCorrectImages.includes(clickedFilename)) {
+                    selectedCorrectImages.push(clickedFilename);
+                }
+
+                // 3. Проверяем, все ли цели выбраны (1 для ИЛИ-раундов, >1 для И-раундов)
+                if (selectedCorrectImages.length === requiredTargets.length) {
+                    // ВСЕ ВЕРНО
+                    updateScore(POINTS_CORRECT);
+                    finishRound(); 
+                } 
+                    
+            } else {
+                // --- Неправильный выбор (дистрактор) ---
+                
+                hasMadeError = true; 
+                updateScore(POINTS_INCORRECT);
+                audioButton.disabled = true; // Отключаем повтор аудио
+                
+                // 1. Визуальная обратная связь
+                clickedButton.classList.add('incorrect-clicked');
+                
+                // 2. Подсвечиваем правильный ответ
+                buttonsGrid.querySelectorAll('.image-button').forEach(btn => {
+                    btn.disabled = true; // Блокируем все кнопки
+                    if (requiredTargets.includes(btn.dataset.filename)) {
+                        // Подсвечиваем все правильные (даже если уже выбраны)
+                        btn.classList.add('correct-clicked');
+                    } else if (btn !== clickedButton) {
+                         // Остальные дистракторы делаем полупрозрачными
+                         btn.classList.add('opacity-50');
+                    }
+                });
+
+                // Автоматический переход после ошибки
+                finishRound();
+            }
+        };
+
+        // Инициализация при загрузке страницы
+        window.onload = () => {
+             // Инициализация Confetti
+             if (typeof JSConfetti !== 'undefined') {
+                jsConfettiInstance = new JSConfetti(); 
+             }
+             
+             // --- ПРЕДОБРАБОТКА ---
+             gameRoundsProcessed = preprocessRounds(baseGameRounds);
+             
+             goalDisplay.textContent = GOAL_SCORE;
+             updateScore(0); // Инициализация счета
+             
+             // Изначально создаем 4 пустые кнопки-заглушки
+             for (let i = 0; i < 4; i++) {
+                const button = document.createElement('button');
+                button.className = 'image-button bg-gray-300 text-gray-500 text-3xl rounded-xl disabled:opacity-75 aspect-square flex items-center justify-center';
+                button.disabled = true;
+                button.innerHTML = '<span class="text-xl font-bold text-gray-500">...</span>';
+                buttonsGrid.appendChild(button);
+            }
+            startNextButton.disabled = false; // Убедимся, что кнопка "Начать Игру" активна сразу
+        };
+
+    </script>
+</body>
+</html>
